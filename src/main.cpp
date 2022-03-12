@@ -4,11 +4,11 @@
 #include <RTClib.h>
 #include <millisDelay.h> // part of the SafeString Library
 #include <WiFi.h>  // for ota update
-#include <AsyncElegantOTA.h>// for ota update
 #include <Adafruit_ADS1X15.h> // For Adafruit 4 channel ADC Breakout board SFD1015
 #include <DHT.h> // Humidity and tempurature sensor
 #include <EEPROM.h> // to access flash memory
-#include <FirebaseESP32.h> // to connect to firebase realtime database
+//#include <FirebaseESP32.h> // to connect to firebase realtime database
+#include <Firebase_ESP_Client.h>
 
 #define output Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
 #define outputln Serial.println // Makes life easier
@@ -24,17 +24,18 @@ Adafruit_ADS1115 ads; // Use this for the 16-bit version ADC
 
 //const char* ssid = "A Cat May Puree Randomly"; const char* password = "Success2021";
 //const char* ssid = "Office 2.4";
-//const char* ssid = "Free Viruses";
+const char* ssid = "Free Viruses";
 //const char* ssid = "TekSavvy";
-//const char* password = "cracker70";
+const char* password = "cracker70";
 
-AsyncWebServer server(80);
+//AsyncWebServer server(80);
 
 // --e--- DEFAULT SETTINGS ------
 int temp_in_c = 1; // Tempurature defaults to C 0 = farenheight
 int heat_set = 25; // Tempurature that shuts off the heater in c
 float heat_delay = .5; // Delay heater power on initiation in minutes
 float moisture_delay = 1; // Delay between moisture sensing in minutes
+int blink_delay = 1;// delay of blinking on screen
 
 bool twelve_hour_clock = true; // Clock format
 
@@ -78,43 +79,8 @@ OneWire oneWire(16);// Tempurature pin - Setup a oneWire instance to communicate
 // =========== WEB SERVER = =========================
 // ==================================================
 IPAddress local_ip;
-void setupWebServer(){
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  Serial.println("");
-  // Wait for connection
-  lcd.setCursor(0,0);
-  millisDelay connectionDelay;
-  connectionDelay.start(10000);
-  lcd.print("CONNECTING:");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    lcd.print(".");
-    if (connectionDelay.justFinished()) break;
-    }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-    local_ip = WiFi.localIP();
-    lcd.clear(); lcd.setCursor(0,0);
-    lcd.print("Connected to :"); lcd.setCursor(0,1); lcd.print(ssid);
-    lcd.setCursor(0,2); lcd.print("IP Address: "); lcd.setCursor(0,3); lcd.print(WiFi.localIP());
-    delay(10000);
-    lcd.clear();
-    }
-  else {lcd.clear(); Serial.print("FAILED TO CONNECT"); lcd.print("FAILED TO CONNECT"); delay(3000);}
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "Hello World");
-  });
-  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
-  server.begin();
-  Serial.println("HTTP server started");
-}
 
+/*
 // *************** CALIBRATION FUNCTION ******************
 // To calibrate actual votage read at pin to the esp32 reading
 uint32_t readADC_Cal(int ADC_Raw){
@@ -122,7 +88,7 @@ uint32_t readADC_Cal(int ADC_Raw){
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
   return(esp_adc_cal_raw_to_voltage(ADC_Raw, &adc_chars));
 }
-
+*/
 float convertCtoF(float c){float f = c*1.8 + 32;return f;}
 
 // =======================================================
@@ -174,11 +140,6 @@ void dhtReadings(){
   }
 }
 
-void displayDHTmain(){
-  if (temp_in_c == 1) {lcd.print(" "); lcd.print(dht_tempC,0); lcd.print(" "); lcd.print(dht_humidity,0); lcd.print("%");}
-  else {lcd.print(" "); lcd.print(dht_tempF,0); lcd.print(" "); lcd.print(dht_humidity,0); lcd.print("%");}
-}
-
 // =======================================================
 // ========== RTC Functions ==============================
 // =======================================================
@@ -211,9 +172,9 @@ void setTimeVariables() {
 }
 
 void printDigits(int digit) {// To alwasy display time in 2 digits
-  lcd.print(":");
-  if(digit < 10) lcd.print('0');
-  lcd.print(digit);
+  Serial.print(":");
+  if(digit < 10) Serial.print('0');
+  Serial.print(digit);
 }
 
 void displayTime() { // Displays time in proper format
@@ -222,9 +183,9 @@ void displayTime() { // Displays time in proper format
     if (ispm == true) am_pm = "PM";
     else am_pm = "AM";
   }
-  lcd.print(hour);
+  Serial.print(hour);
   printDigits(minute);
-  if (twelve_hour_clock == true) lcd.print(am_pm);
+  if (twelve_hour_clock == true) Serial.print(am_pm);
   if (display_seconds == true) printDigits(second);
 }
 
@@ -273,16 +234,16 @@ void getWaterTemp() {
 // =======================================================
 String heater_status;
 void heaterIntitilization() {
-  pinMode(heater_pin, OUTPUT); digitalWrite(heater_pin, HIGH);
-  heaterTimer.start(heater_delay *60 * 1000); // start heater initilization delay
+  pinMode(heat_pin, OUTPUT); digitalWrite(heat_pin, HIGH);
+  heaterTimer.start(heat_delay *60 * 1000); // start heater initilization delay
 }
 
 void checkHeater() {
   if (heaterTimer.remaining()==0) {// if delay is done, start heater if needed
-    if (tempC < heater_set) digitalWrite(heater_pin, LOW);
-    else digitalWrite(heater_pin, HIGH);
+    if (tempC < heat_set) digitalWrite(heat_pin, LOW);
+    else digitalWrite(heat_pin, HIGH);
   }
-  if (digitalRead(heater_pin == 0)) heater_status = "OFF";
+  if (digitalRead(heat_pin == 0)) heater_status = "OFF";
   else heater_status = "ON";
 }
 
@@ -552,6 +513,8 @@ void doseTest() {
 // ==================================================
 // ===========  FIREBASE ============================
 // ==================================================
+
+/*
 //String device_location = "Controler 1"; // Device Location config
 FirebaseData fbdo; // Firebase Realtime Database Object
 FirebaseAuth auth; // Firebase Authentication Object
@@ -609,7 +572,7 @@ void firebase_init() {
       isAuthenticated = false;
     }
  */ 
-
+/*
   config.token_status_callback = tokenStatusCallback;// Assign the callback function for the long running token generation task, see addons/TokenHelper.h
   config.max_token_generation_retry = 5;// Assign the maximum retry of token generation
   Firebase.begin(&config, &auth);// Initialise the firebase library
@@ -660,7 +623,7 @@ void sendToFirebase() {
 
         Firebase.setFloat(fbdo, databasePath + datatype + "/set pH", ph_set_level);
         Firebase.setFloat(fbdo, databasePath + datatype + "/set TDS", ppm_set_level);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/set Water Tempurature", heater_set);
+        Firebase.setFloat(fbdo, databasePath + datatype + "/set Water Tempurature", heat_set);
         Firebase.setInt(fbdo, databasePath + datatype + "/set Pump ON", pump_on_time);
         Firebase.setInt(fbdo, databasePath + datatype + "/set Pump OFF", pump_off_time);
         Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Time", ph_dose_seconds);
@@ -694,8 +657,8 @@ void sendPumpTimetoFirebase()
 void setup(void) {
   Serial.begin(115200);// start serial port 115200
   Serial.println("Starting Hydroponics Controller V2!");
-  setupWebServer();
-  firebase_init();
+  //setupWebServer();
+  //firebase_init();
   // Stored Defaults
   #define EEPROM_SIZE 14
   EEPROM.begin(EEPROM_SIZE);
@@ -753,13 +716,12 @@ void loop(void) {
   // --- PUMP TIMER
   pumpTimer(); // uncomment this to turn on functioning pump timer
   // --- DISPLAY SCREEN - done in rotary loop
-  rotaryLoop();
   if (clear_screen == true){clear_screen = false;} // clear noise from the screen when pump turns on
 
   epochTime = getTime();
   current_time = (String)hour + ":" + (String)minute;
   //Serial.print("about to send to firebase");
-  sendToFirebase();
+  //sendToFirebase();
   //sendPumpTimetoFirebase();
 }
 // ----------------- END MAIN LOOP ------------------------
