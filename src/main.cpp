@@ -10,8 +10,18 @@
 //#include <FirebaseESP32.h> // to connect to firebase realtime database
 #include <Firebase_ESP_Client.h>
 
-#define output Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
-#define outputln Serial.println // Makes life easier
+//--- SHORT CUTS ---------------------------------
+#define out Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
+#define outln Serial.println // Makes life easier
+
+// --- WIFI SETUP
+//const char* ssid = "A Cat May Puree Randomly"; const char* password = "Success2021";
+const char* ssid = "Free Viruses";
+//const char* ssid = "TekSavvy";
+const char* password = "cracker70";
+
+//AsyncWebServer server(80);
+
 
 // ---- FIREBASE SETUP --------------------------
 #define DEVICE_UID "2X"// Device ID
@@ -20,44 +30,14 @@
 #define USER_EMAIL "controller2@conciergegrowers.ca"
 #define USER_PASSWORD "Success2022"
 
-Adafruit_ADS1115 ads; // Use this for the 16-bit version ADC
-
-//const char* ssid = "A Cat May Puree Randomly"; const char* password = "Success2021";
-//const char* ssid = "Office 2.4";
-const char* ssid = "Free Viruses";
-//const char* ssid = "TekSavvy";
-const char* password = "cracker70";
-
-//AsyncWebServer server(80);
-
-// --e--- DEFAULT SETTINGS ------
-int temp_in_c = 1; // Tempurature defaults to C 0 = farenheight
-int heat_set = 25; // Tempurature that shuts off the heater in c
-float heat_delay = .5; // Delay heater power on initiation in minutes
-float moisture_delay = 1; // Delay between moisture sensing in minutes
-int blink_delay = 1;// delay of blinking on screen
-
-bool twelve_hour_clock = true; // Clock format
-
-float pump_init_delay = .5; // Minutes - Initial time before starting the pump on startup
-int pump_on_time = 10; // Minutes - how long the pump stays on for
-int pump_off_time = 30; // Minutes -  how long the pump stays off for
-
-float ph_set_level = 6.9; // Desired pH level
-int ph_delay_minutes = 5;// miniumum period allowed between doses in minutes
-int ph_dose_seconds = 1; // Time Dosing pump runs per dose in seconds;
-float ph_tolerance = 0.2; // how much can ph go from target before adjusting
-
-int ppm_set_level = 1; // Desired nutrient level
-int ppm_delay_minutes = 5; //period btween readings/doses in minutes
-int ppm_dose_seconds = 1; // Time Dosing pump runs per dose
-int ppm_tolerance = 100; // nutrient level tolarance in ppm
-
-// ----- SET PINS ------------------
+// ----------------------------------------------
+// ------ SET PINS ------------------------------
+// ----------------------------------------------
 // Pin 21 - SDA - RTC and LCD screen
 // Pin 22 - SCL - RTC and LCD screen
 
 // ADC Board
+Adafruit_ADS1115 ads; // Use this for the 16-bit version ADC
 int16_t adc0; //pH sensordevi
 int16_t adc1; //TDS sensor
 int16_t adc2; //Moisture Sensor
@@ -74,6 +54,54 @@ OneWire oneWire(16);// Tempurature pin - Setup a oneWire instance to communicate
 #define ph_down_pin 26 // pH down dosing pump
 #define ppm_a_pin 19 // nutrient part A dosing pump
 #define ppm_b_pin 18 // nutrient part B dosing pump
+
+// -----------------------------------------------
+// ----- DEFAULT SETTINGS & GLOBAL VARIABLES -----
+// -----------------------------------------------
+
+// --- Time ---
+bool twelve_hour_clock = true; // Clock format
+
+// --- WATER TEMPURATURE ---
+float tempC; // tempurature in Celsius
+float tempF; // tempurature in Fahrenheit
+int temp_in_c = 1; // Tempurature defaults to C 0 = farenheight
+String heater_status;
+
+int heat_set = 25; // Tempurature that shuts off the heater in c
+float heat_init_delay = 1; // Delay heater power on initiation in minutes
+
+// --- DHT - ROOM TEMP AND HUMIDITY ---
+float dht_tempC = -0;
+float dht_tempF = 0;
+float dht_humidity = 0;
+
+int dht_delay = 3; // Time between room temp and humidity readings in seconds
+
+// ---Moisture ---
+int moisture_delay = 1; // Delay between moisture sensing in minutes
+
+// --- PH ---
+float ph_value; // actual pH value to display on screen
+
+float ph_set_level = 6.9; // Desired pH level
+int ph_dose_delay = 5;// miniumum period allowed between doses in minutes
+int ph_dose_time = 1; // Time Dosing pump runs per dose in seconds;
+float ph_tolerance = 0.2; // how much can ph go from target before adjusting
+float ph_calibration_adjustment = -1.26; // adjust this to calibrate
+
+
+float pump_init_delay = .5; // Minutes - Initial time before starting the pump on startup
+int pump_on_time = 10; // Minutes - how long the pump stays on for
+int pump_off_time = 30; // Minutes -  how long the pump stays off for
+
+
+int ppm_set_level = 1; // Desired nutrient level
+int ppm_delay_minutes = 5; //period btween readings/doses in minutes
+int ppm_dose_seconds = 1; // Time Dosing pump runs per dose
+int ppm_tolerance = 100; // nutrient level tolarance in ppm
+
+
 
 // ==================================================
 // =========== WEB SERVER = =========================
@@ -94,6 +122,7 @@ float convertCtoF(float c){float f = c*1.8 + 32;return f;}
 // =======================================================
 // ======= MOISTURE SENSOR ====================
 // =======================================================
+/*
 int moisture_value;
 millisDelay moistureDelay;
 
@@ -108,35 +137,34 @@ void moistureReading(){
     //Serial.print("     moisture_value = "); Serial.print(moisture_value); Serial.println("%");
   }
 }
-
+*/
 // =======================================================
 // ========== DHT Sensor ==============================
 // =======================================================
 #define DHTTYPE DHT11   // DHT 11
-DHT dht(dht_pin, DHTTYPE);
-millisDelay dhtDelay;
-float dht_tempC = 0;
-float dht_tempF = 0;
-float dht_humidity = 0;
+//#define dhtReadingDelay 1
+DHT dht(dht_pin, DHTTYPE); // Currently pin 17
+millisDelay dhtDelayTimer;
 
-void dhtIntilization(){
+void dhtInit(){
   dht.begin(); // initialize humidity sensor
-  dhtDelay.start(3000); // sensor can only sample every 1 second
+  dhtDelayTimer.start(dht_delay*1000); // Start the delay between readings
   pinMode(dht_pin, INPUT_PULLUP);
 }
 
-void dhtReadings(){
-  if (dhtDelay.justFinished()){
+void getDHTReadings(){
+  
+  if (dhtDelayTimer.justFinished()){
     dht_tempC = dht.readTemperature();
     dht_tempF = dht.readTemperature(true);
     dht_humidity = dht.readHumidity();
-    dhtDelay.repeat();
-    /*
+    dhtDelayTimer.repeat();
+    // --- debugging ----
     Serial.print("reading from pin 34 :"); Serial.print(digitalRead(34));
     Serial.print("   reading from pin 35 :"); Serial.print(digitalRead(35));
-    Serial.print("   Temperature = "); Serial.print(dht_tempC); Serial.print("       F: ");Serial.print(dht_tempF);
+    Serial.print("   Temperature = C:"); Serial.print(dht_tempC); Serial.print("       F: ");Serial.print(dht_tempF);
     Serial.print("       Humidity = "); Serial.println(dht_humidity);
-    */
+    // --- end debugging ---
   }
 }
 
@@ -207,8 +235,7 @@ unsigned long getTime() {
 // =======================================================
 // ======= TEMPURATURE SENSOR DS18B20 ====================
 // =======================================================
-float tempC; // tempurature in Celsius
-float tempF; // tempurature in Fahrenheit
+
 millisDelay heaterTimer;
 #define TEMPERATURE_PRECISION 10
 DallasTemperature waterTempSensor(&oneWire); // Pass our oneWire reference to Dallas Temperature.
@@ -232,10 +259,9 @@ void getWaterTemp() {
 // =======================================================
 // ======= HEATER CONTROL ================================
 // =======================================================
-String heater_status;
 void heaterIntitilization() {
   pinMode(heat_pin, OUTPUT); digitalWrite(heat_pin, HIGH);
-  heaterTimer.start(heat_delay *60 * 1000); // start heater initilization delay
+  heaterTimer.start(heat_init_delay *60 * 1000); // start heater initilization delay
 }
 
 void checkHeater() {
@@ -250,8 +276,6 @@ void checkHeater() {
 // =======================================================
 // ======= PH SENSOR =====================================
 // =======================================================
-float ph_value; // actual pH value to display on screen
-float ph_calibration_adjustment = -1.26; // adjust this to calibrate
 
 void getPH() {
   float voltage_input = 3.3; // voltage can be 5 or 3.3
@@ -419,15 +443,14 @@ float min_pump_time = .5; // minumim time in minutes the pump needs to have been
 void phDosingInitilization() {
   pinMode(ph_up_pin, OUTPUT); digitalWrite(ph_up_pin, HIGH);
   pinMode(ph_down_pin, OUTPUT); digitalWrite(ph_down_pin, HIGH);
-  phDoseDelay.start((ph_delay_minutes+pump_init_delay)*60*1000); // start ph delay before dosing can start
+  phDoseDelay.start((ph_dose_delay+pump_init_delay)*60*1000); // start ph delay before dosing can start
 }
 
 void phDose(int motor_pin) {// turns on the approiate ph dosing pump
   digitalWrite(motor_pin, LOW); // turn on dosing pump
-  phDoseTimer.start(ph_dose_seconds*1000); // start the pump
-  phBlinkDelay.start(blink_delay*1000); // start delay for blinking indicator
+  phDoseTimer.start(ph_dose_time*1000); // start the pump
   ph_dose_pin = motor_pin;
-  phDoseDelay.start(ph_delay_minutes * 60 * 1000); // start delay before next dose is allowed
+  phDoseDelay.start(ph_dose_delay * 60 * 1000); // start delay before next dose is allowed
   Serial.print("A ph dose has been started, timer is runnning. Dose pin : "); Serial.println(ph_dose_pin);
   //ph_is_blinking = true;
   pumpOnTimer.restart();
@@ -464,7 +487,6 @@ void ppmDoseA() {
   ppmDoseDelay.start(ppm_delay_minutes * 60 * 1000); // start delay before next dose is allowed
   Serial.println("Nutrient dose A has been started, timer is runnning");
   next_ppm_dose_b = true; // run ppm dose B next
-  ppmBlinkDelay.start(blink_delay*1000);
   pumpOnTimer.restart();
 }
 
@@ -473,7 +495,6 @@ void ppmDoseB() {
   ppmDoseTimerB.start(ppm_dose_seconds*1000); // start the pump
   ppmDoseDelay.start(ppm_delay_minutes * 60 * 1000); // start delay before next dose is allowed
   Serial.println("Nutrient dose A has been started, timer is runnning");
-  ppmBlinkDelay.start(blink_delay*1000);
   pumpOnTimer.restart();
 }
 void ppmBlanceCheck() {
@@ -626,12 +647,12 @@ void sendToFirebase() {
         Firebase.setFloat(fbdo, databasePath + datatype + "/set Water Tempurature", heat_set);
         Firebase.setInt(fbdo, databasePath + datatype + "/set Pump ON", pump_on_time);
         Firebase.setInt(fbdo, databasePath + datatype + "/set Pump OFF", pump_off_time);
-        Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Time", ph_dose_seconds);
+        Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Time", ph_dose_time);
         Firebase.setFloat(fbdo, databasePath + datatype + "/pH Tolorance", ph_tolerance);
         Firebase.setInt(fbdo, databasePath + datatype + "/Nutrient Dose Time", ppm_dose_seconds);
         Firebase.setFloat(fbdo, databasePath + datatype + "/Nutrient Tolorance", ppm_tolerance);
         Firebase.setString(fbdo, databasePath + datatype + "/Pump Time", pump_time_string);
-        Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Delay", ph_delay_minutes);
+        Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Delay", ph_dose_delay);
         Firebase.setInt(fbdo, databasePath + datatype + "/Nutrient Delay", ppm_delay_minutes);
         Firebase.setFloat(fbdo, databasePath + datatype + "/set pH", ph_set_level);
         Firebase.setInt(fbdo, databasePath + datatype + "/Temp Units", temp_in_c);
@@ -659,6 +680,7 @@ void setup(void) {
   Serial.println("Starting Hydroponics Controller V2!");
   //setupWebServer();
   //firebase_init();
+/*
   // Stored Defaults
   #define EEPROM_SIZE 14
   EEPROM.begin(EEPROM_SIZE);
@@ -673,25 +695,27 @@ void setup(void) {
   if (EEPROM.read(9) != 255) pump_off_time = EEPROM.read(9); // pump off time
   if (EEPROM.read(10) != 255) ppm_dose_seconds = EEPROM.read(10); // pump off time
   if (EEPROM.read(11) != 255) ppm_delay_minutes = EEPROM.read(11); // PPM dose delay
-  if (EEPROM.read(12) != 255) ph_delay_minutes = EEPROM.read(12); // ph dose delay
-  if (EEPROM.read(13) != 255) ph_dose_seconds = EEPROM.read(13); // ph dose delay
-
+  if (EEPROM.read(12) != 255) ph_dose_delay = EEPROM.read(12); // ph dose delay
+  if (EEPROM.read(13) != 255) ph_dose_time = EEPROM.read(13); // ph dose delay
+*/
   // Check to see if ADS initalized
-  if (!ads.begin()) {Serial.println("Failed to initialize ADS."); while (1);}
+  //if (!ads.begin()) {Serial.println("Failed to initialize ADS."); while (1);}
   
   //Initalize RTC
-  initalize_rtc();
-  setTimeVariables();
-  configTime(0, 0, ntpServer);
+  //initalize_rtc();
+  //setTimeVariables();
+  //configTime(0, 0, ntpServer);
 
   // Initilization functions
-  waterTempInitilization();
-  dhtIntilization();
-  moistureInitilization(); // change to minutes later
-  pumpInitilization();
-  heaterIntitilization();
-  phDosingInitilization();
-  ppmDosingInitilization();
+  //waterTempInitilization();
+
+  dhtInit();
+
+  //moistureInitilization(); // change to minutes later
+  //pumpInitilization();
+  //heaterIntitilization();
+  //phDosingInitilization();
+  //ppmDosingInitilization();
 
   //doseTest(); //used to test ph dosing motors
   //testFileUpload();
@@ -702,24 +726,23 @@ void setup(void) {
 // ===========  MAIN LOOP =============================
 // ====================================================
 void loop(void) {
-  setTimeVariables();
+  //setTimeVariables();
   // --- READ SENSORS
-  getWaterTemp(); // sets tempC and tempF
-  getTDSReading(); // sets tds_value
-  getPH();
-  dhtReadings();
-  moistureReading();
-  ppmBlanceCheck();
-  // --- CONTROL SYSTEMS
-  checkHeater();
-  phBalanceCheck();
-  // --- PUMP TIMER
-  pumpTimer(); // uncomment this to turn on functioning pump timer
-  // --- DISPLAY SCREEN - done in rotary loop
-  if (clear_screen == true){clear_screen = false;} // clear noise from the screen when pump turns on
+  getDHTReadings();
 
-  epochTime = getTime();
-  current_time = (String)hour + ":" + (String)minute;
+  //getWaterTemp(); // sets tempC and tempF
+  //getTDSReading(); // sets tds_value
+  //getPH();
+  
+  //moistureReading();
+  //ppmBlanceCheck();
+  // --- CONTROL SYSTEMS
+  //checkHeater();
+ //phBalanceCheck();
+  // --- PUMP TIMER
+  //pumpTimer(); // uncomment this to turn on functioning pump timer
+  
+  //current_time = (String)hour + ":" + (String)minute;
   //Serial.print("about to send to firebase");
   //sendToFirebase();
   //sendPumpTimetoFirebase();
