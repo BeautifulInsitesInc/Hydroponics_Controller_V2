@@ -3,27 +3,17 @@
 #include <DallasTemperature.h> // For DS18B20 Water tempurature sensor
 #include <RTClib.h> // for DS3231 Real Time Clock
 #include <millisDelay.h> // part of the SafeString Library. Used for non pausing timer
-#include <Wire.h> // for 12c comunication
 #include <Adafruit_ADS1X15.h> // For Adafruit 4 channel ADC Breakout board SFD1015
 #include <DHT.h> // Humidity and tempurature sensor
 #include <EEPROM.h> // to access flash memory
 //#include <FirebaseESP32.h> // to connect to firebase realtime database
 #include <Firebase_ESP_Client.h>
-#include <addons/TokenHelper.h>//Provide the token generation process info.
-#include <addons/RTDBHelper.h>//Provide the RTDB payload printing info and other helper functions.
-#include <time.h> // To get epoch time
-
-
 #include <WiFi.h>  // for ota update
-#include <SPI.h>
-//#include <TFT_eSPI.h> //ILI9486 Touch screen display
 
-//TFT_eSPI tft = TFT_eSPI();       // Invoke custom library
-//#define TFT_GREY 0x5AEB 
 
 //--- SHORT CUTS ---------------------------------
-//#define out Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
-//#define outln Serial.println // Makes life easier
+#define out Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
+#define outln Serial.println // Makes life easier
 
 // ----------------------------------------------
 // ------ WIFI ------------------------------
@@ -44,6 +34,7 @@ void initWiFi() {
   Serial.println(WiFi.localIP());
   Serial.println();
 }
+
 //AsyncWebServer server(80);
 
 // ----------------------------------------------
@@ -53,11 +44,10 @@ void initWiFi() {
 // Pin 22 - SCL - RTC and LCD screen
 
 // ADC Board
-Adafruit_ADS1115 ads; // Use 1115  for the 16-bit version ADC (0x48)
-
-#define ph_pin 34  // being temporarily used until new ADC comes in
-//int16_t adc1; //TDS sensor
-//int16_t adc2; //Moisture Sensor
+Adafruit_ADS1115 ads; // Use this for the 16-bit version ADC
+int16_t adc0; //pH sensordevi
+int16_t adc1; //TDS sensor
+int16_t adc2; //Moisture Sensor
 
 // Direct Connect 
 #define dht_pin 17 // Humidity and air tempurature sensor
@@ -81,10 +71,10 @@ bool twelve_hour_clock = true; // Clock format
 
 // --- WATER TEMPURATURE ---
 bool temp_in_C = true; // True = Celcius, Fales = fahrenheit
-float water_temp_C = 0; // tempurature in Celsius
-float water_temp_F = 0; // tempurature in Fahrenheit
+float water_temp_C; // tempurature in Celsius
+float water_temp_F; // tempurature in Fahrenheit
 int temp_in_c = 1; // Tempurature defaults to C 0 = farenheight
-String heater_status = "INIT";
+String heater_status;
 
 int water_temp_delay = 5; // Time between water temp readings
 int heat_set = 25; // Tempurature that shuts off the heater in c
@@ -95,7 +85,7 @@ float dht_tempC = -0;
 float dht_tempF = 0;
 float dht_humidity = 0;
 
-int dht_delay = 5; // Time between room temp and humidity readings in seconds
+int dht_delay = 3; // Time between room temp and humidity readings in seconds
 
 // ---Moisture ---
 int moisture_delay = 1; // Delay between moisture sensing in minutes
@@ -107,8 +97,6 @@ float ph_set_level = 6.9; // Desired pH level
 int ph_dose_delay = 5;// miniumum period allowed between doses in minutes
 int ph_dose_time = 1; // Time Dosing pump runs per dose in seconds;
 float ph_tolerance = 0.2; // how much can ph go from target before adjusting
-
-int ph_delay = 5; // Time between ph readings
 float ph_calibration_adjustment = -1.26; // adjust this to calibrate
 
 float pump_init_delay = .5; // Minutes - Initial time before starting the pump on startup
@@ -119,14 +107,8 @@ int ppm_set_level = 1; // Desired nutrient level
 int ppm_delay_minutes = 5; //period btween readings/doses in minutes
 int ppm_dose_seconds = 1; // Time Dosing pump runs per dose
 int ppm_tolerance = 100; // nutrient level tolarance in ppm
-
-// --- PUMP ---
-String pump_status = "INIT";
-
-
-
 // --- FIREBASE ---
-int firebase_delay = 10; // The frequency of sensor updates to firebase, set to 10seconds
+unsigned long firebase_interval = 5; // The frequency of sensor updates to firebase, set to 10seconds
 
 
 // ==================================================
@@ -176,7 +158,7 @@ void moistureReading(){
 DHT dht(dht_pin, DHTTYPE); // Currently pin 17
 millisDelay dhtDelayTimer;
 
-void initDHT(){
+void dhtInit(){
   dht.begin(); // initialize humidity sensor
   dhtDelayTimer.start(dht_delay*1000); // Start the delay between readings
   pinMode(dht_pin, INPUT_PULLUP);
@@ -184,19 +166,13 @@ void initDHT(){
 
 void getDHTReadings(){
   if (dhtDelayTimer.justFinished()){
+    dht_tempC = dht.readTemperature();
+    dht_tempF = dht.readTemperature(true);
+    dht_humidity = dht.readHumidity();
     dhtDelayTimer.repeat();
-    if (isnan(dht.readTemperature())){
-      dht_tempC = 0;
-      dht_tempF = 0;
-    }
-    else {
-      dht_tempC = dht.readTemperature();
-      dht_tempF = dht.readTemperature(true);
-    }
-    if (isnan(dht.readHumidity())) dht_humidity = 0;
-    else dht_humidity = dht.readHumidity();
     // --- debugging ----
-    //Serial.print("       DHT Temp = C:"); Serial.print(dht_tempC); Serial.print("       F: "); Serial.print(dht_tempF); Serial.print("       Humidity = "); Serial.println(dht_humidity);
+    //Serial.print("   Temperature = C:"); Serial.print(dht_tempC); Serial.print("       F: ");Serial.print(dht_tempF);
+    //Serial.print("       Humidity = "); Serial.println(dht_humidity);
     // --- end debugging ---
   }
 }
@@ -208,26 +184,27 @@ millisDelay waterTempDelayTimer;
 #define TEMPERATURE_PRECISION 10
 DallasTemperature waterTempSensor(&oneWire); // Pass our oneWire reference to Dallas Temperature.
 
-void initWaterTemp() {
+void waterTempInit() {
   waterTempSensor.begin(); // initalize water temp sensor
   waterTempDelayTimer.start(water_temp_delay*1000); 
 }
 
 void getWaterTemp() {
   if (waterTempDelayTimer.justFinished()) {
-    
     waterTempSensor.requestTemperatures();    // send the command to get temperatures
     water_temp_C = waterTempSensor.getTempCByIndex(0);  // read temperature in °C
     water_temp_F = water_temp_C * 9 / 5 + 32; // convert °C to °F
     if (water_temp_C == DEVICE_DISCONNECTED_C) // Something is wrong, so return an error
       {
-        water_temp_C = 0; // -1 to show error
-        water_temp_F = 0;
+        Serial.println("Houston, we have a problem");
+        water_temp_C = -1; // -1 to show error
+        water_temp_F = -1;
       }
     waterTempDelayTimer.repeat();
   // debugging
-  //Serial.print("Water Temp : "); Serial.print(water_temp_C); Serial.print("C   "); Serial.println(water_temp_F); Serial.print("F");
+  //out("Water Temp : "); out(water_temp_C); out("C   "); out(water_temp_F); outln("F");
   }
+  
 }
 
 // =======================================================
@@ -235,7 +212,6 @@ void getWaterTemp() {
 // =======================================================
 RTC_DS3231 rtc; 
 DateTime now;
-
 
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 bool display_seconds = false;
@@ -300,7 +276,6 @@ unsigned long getTime() {
 // =======================================================
 // ======= HEATER CONTROL ================================
 // =======================================================
-/*
 millisDelay heaterTimer;
 void heaterInit() {
   pinMode(heat_pin, OUTPUT); digitalWrite(heat_pin, HIGH);
@@ -315,72 +290,49 @@ void checkHeater() {
   if (digitalRead(heat_pin == 0)) heater_status = "OFF";
   else heater_status = "ON";
 }
-*/
+
 // =======================================================
 // ======= PH SENSOR =====================================
 // =======================================================
-millisDelay phDelayTimer;
-int16_t adc0; //pH sensordevi
 
-void initPH() {phDelayTimer.start(ph_delay * 1000);}
+void getPH() {
+  float voltage_input = 3.3; // voltage can be 5 or 3.3
+  unsigned long int average_reading ;
+  unsigned long int buffer_array_ph[10],temp;
+  float calculated_voltage; // voltage calculated from reading
 
-void getPHReading() {
-  if (phDelayTimer.justFinished()){
-    phDelayTimer.repeat();
-    Serial.println("running ph");
-    
-    float voltage_input = 3.3; // voltage can be 5 or 3.3
-    unsigned long int average_reading ;
-    unsigned long int buffer_array_ph[10],temp;
-    float calculated_voltage; // voltage calculated from reading
-
-      for(int i=0;i<10;i++) {// take 10 readings to get average
-        //buffer_array_ph[i]=ads.readADC_SingleEnded(0); // read the voltage from ADC
-        buffer_array_ph[i]=analogRead(ph_pin); // read from chip ADC pin
-        delay(30);
-      }
-      for(int i=0;i<9;i++) {
-        for(int j=i+1;j<10;j++) {
-          if(buffer_array_ph[i]>buffer_array_ph[j]) {
-            temp=buffer_array_ph[i];
-            buffer_array_ph[i]=buffer_array_ph[j];
-            buffer_array_ph[j]=temp;
-          }
-        }
-      }
-      average_reading = 0;
-      for(int i=2;i<8;i++) {average_reading  += buffer_array_ph[i];}
-      average_reading  = average_reading  / 6;
-      calculated_voltage = ads.computeVolts(average_reading);
-      ph_value = voltage_input * calculated_voltage + ph_calibration_adjustment;
-      if (average_reading == 0) ph_value = 0; // make this an error condition
-    
-      // Debugging
-      Serial.print("average_reading = "); Serial.print(average_reading );  Serial.print("      calculated_voltage = "); Serial.print(calculated_voltage); Serial.print("     ph_value = "); Serial.print(ph_value);
-      Serial.print("current reading "); Serial.println(analogRead(ph_pin));
-      /*
-      
-      if (!ADS.isConnected()) {
-    Serial.print("There is an issue with the ADC");
-      }
-      else Serial.print("It seems ok");
-      if(ADS.isReady())
-        {
-          Serial.print("its ready!");
-          adc0 = ADS.readADC(0);
-          Serial.print("The ADS reading is .... "); Serial.print(adc0);
-        }
-  */
-      
-      Serial.print("   ADC Reading : "); Serial.print(adc0); 
-      Serial.print("   ADC voltage : "); Serial.println(adc0);
+  for(int i=0;i<10;i++) {// take 10 readings to get average
+    buffer_array_ph[i]=ads.readADC_SingleEnded(0); // read the voltage
+    delay(30);
   }
+  for(int i=0;i<9;i++) {
+    for(int j=i+1;j<10;j++) {
+      if(buffer_array_ph[i]>buffer_array_ph[j]) {
+        temp=buffer_array_ph[i];
+        buffer_array_ph[i]=buffer_array_ph[j];
+        buffer_array_ph[j]=temp;
+      }
+    }
+  }
+  average_reading = 0;
+  for(int i=2;i<8;i++) {average_reading  += buffer_array_ph[i];}
+  average_reading  = average_reading  / 6;
+  calculated_voltage = ads.computeVolts(average_reading);
+  ph_value = voltage_input * calculated_voltage + ph_calibration_adjustment;
+  if (ph_value < 2 || ph_value > 11) ph_value = -1; // make this an error condition
+  /*
+  Serial.print("    average_reading  = "); Serial.print(average_reading );
+  Serial.print("      calculated_voltage = "); Serial.print(calculated_voltage);
+  Serial.print("     ph_value = "); Serial.println(ph_value);
+  adc0 =ads.readADC_SingleEnded(0);
+  Serial.print("   ADC Reading : "); Serial.print(adc0); Serial.print("   ADC voltage : "); Serial.println(We get it; you have been heard! We need way more funding for education!);
+  delay(0); // pause between serial monitor output - can be set to zero after testing
+  */
 }
 
 // =======================================================
 // ======= PPM OCEAN TDS METER SENSOR ====================
 // =======================================================
-/*
 int tds_value = 0;
 const int sample_count = 30;    // sum of sample point
 int analogBuffer[sample_count]; // store the analog value in the array, read from ADC
@@ -430,9 +382,7 @@ void getTDSReading() {
     float compensationCoefficient=1.0+0.02*(temperature-25.0);    //temperature compensation formula: fFinalResult(25^C) = fFinalResult(current)/(1.0+0.02*(fTP-25.0));
     float compensationVolatge=average_voltage/compensationCoefficient;  //temperature compensation
     tds_value=(133.42*compensationVolatge*compensationVolatge*compensationVolatge - 255.86*compensationVolatge*compensationVolatge + 857.39*compensationVolatge)*0.5; //convert voltage value to tds value
- 
-   
-    
+    /*
     Serial.print("Average Read: "); Serial.print(average_reading);
     Serial.print("   average Voltage: "); Serial.print(average_voltage);
     Serial.print("   Temp: "); Serial.print(temperature);
@@ -441,18 +391,19 @@ void getTDSReading() {
     Serial.print("current read : "); Serial.print(ads.readADC_SingleEnded(1));
     Serial.print("   current voltage : "); Serial.println(ads.computeVolts(ads.readADC_SingleEnded(1)));
     delay(0);
-    
+    */
   }
 }
-*/
+
 // ==================================================
 // ===========  PUMP CONTROL ========================
 // ==================================================
-/*
 int pump_seconds; // current seconds left
 int pump_minutes;
 millisDelay pumpOnTimer;
 millisDelay pumpOffTimer;
+bool clear_screen = false;
+String pump_status;
 String pump_time_string;
 
 void pumpInitilization() {
@@ -480,6 +431,7 @@ void pumpTimer() {
       //Serial.print(pump_on_time);
       pumpOnTimer.start(pump_on_time * 60 * 1000);
       pump_seconds = pumpOnTimer.remaining() / 1000;
+      clear_screen = true;
     }
   }
   else {// pump is on, check timing
@@ -494,11 +446,10 @@ void pumpTimer() {
   if (digitalRead(pump_pin == 0)) pump_status = "OFF";
   else pump_status = "ON";
 }
-*/
+
 // =================================================
 // ========== PH DOSING PUMPS =========================
 // =================================================
-/*
 int ph_dose_pin; //  used to pass motor pin to functions
 millisDelay phDoseTimer; // the dosing amount time
 millisDelay phDoseDelay; // the delay between doses - don't allow another dose before this
@@ -531,11 +482,9 @@ void phBalanceCheck() {//this is to be called from pump turning on function
   }
 }
 
-*/
 // =================================================
 // ========== PPM DOSING PUMPS =========================
 // =================================================
-/*
 millisDelay ppmDoseTimerA;
 millisDelay ppmDoseTimerB;
 millisDelay ppmDoseDelay;
@@ -599,17 +548,18 @@ void doseTest() {
   digitalWrite(ppm_b_pin, LOW); Serial.println("Nutrient B is LOW"); delay(500);
   digitalWrite(ppm_b_pin, HIGH); Serial.println("Nutrient B is HIGH"); delay(1000);
 }
-*/
 
 // ==================================================
 // ===========  FIREBASE ============================
 // ==================================================
-#define DEVICE_UID "version_2"// Device ID
+#include "addons/TokenHelper.h" // Provide the token generation process info.
+#include "addons/RTDBHelper.h"// Provide the RTDB payload printing info and other helper functions.
+
+#define DEVICE_UID "V2.0"// Device ID
 #define API_KEY "AIzaSyAfFcN1ZnRzW-elpWK65mwCEGZgWwPPxRc"// Your Firebase Project Web API Key
 #define DATABASE_URL "https://conciergev1-default-rtdb.firebaseio.com/"// Your Firebase Realtime database URL
 #define USER_EMAIL "controller2@conciergegrowers.ca"
 #define USER_PASSWORD "Success2022"
-millisDelay firebaseDelayTimer;
 
 // Define Firebase objects
 FirebaseData fbdo;
@@ -618,12 +568,11 @@ FirebaseConfig config;
 String uid; // to save User ID
 
 String databasePath; // Firebase database path
-FirebaseJson json;
 
 unsigned long elapsedMillis = 0; // Stores the elapsed time from device start up
 unsigned long elapsedPumpMillis = 0; 
 int count = 0; // Dummy counter to test initial firebase updates
-//bool isAuthenticated = false;// Store device authentication status
+bool isAuthenticated = false;// Store device authentication status
 
 void initFirebase() {
   config.api_key = API_KEY;// configure firebase API Key
@@ -635,20 +584,20 @@ void initFirebase() {
 
   Serial.println("------------------------------------");
   Serial.println("Sign up new user...");
-/*
-  if (Firebase.signUp(&config, &auth, USER_EMAIL, USER_PASSWORD))// Add user if it doest exist
+  if (Firebase.signUp(&config, &auth, USER_EMAIL, USER_PASSWORD))// Sign in to firebase Anonymously
     {
       Serial.println("Success");
-      //isAuthenticated = true;
+      isAuthenticated = true;
+      //databasePath = "/" + device_location;// Set the database path where updates will be loaded for this device
       uid = auth.token.uid.c_str();
-      Serial.println("Signed into Firebase!");
+      outln("Signed into Firebase!");
     }
   else
     {
       Serial.printf("Failed, %s\n", config.signer.signupError.message.c_str());
-      //isAuthenticated = false;
+      isAuthenticated = false;
     }
-    */
+
   config.token_status_callback = tokenStatusCallback;// Assign the callback function for the long running token generation task, see addons/TokenHelper.h
   config.max_token_generation_retry = 5;// Assign the maximum retry of token generation
   Firebase.begin(&config, &auth);// Initialise the firebase library
@@ -663,36 +612,30 @@ void initFirebase() {
   Serial.print("User UID: ");
   Serial.println(uid);
   databasePath = "/UsersData/" + uid;
-  Serial.print("databasePath : "); Serial.println(databasePath);
+  Serial.println("databasePath : "); Serial.print(databasePath);
 
-  firebaseDelayTimer.start(firebase_delay*1000);
 }
 
 void sendToFirebase() {
     //Serial.print("starting sendtoFirebase");
-    //if (millis() - elapsedMillis > (firebase_interval*1000) && Firebase.ready())// Check that 10 seconds has elapsed before, device is authenticated and the firebase service is ready.
-    if (Firebase.ready() && firebaseDelayTimer.justFinished())
-     {
-        firebaseDelayTimer.repeat();
+    if (millis() - elapsedMillis > (firebase_interval*1000) && Firebase.ready())// Check that 10 seconds has elapsed before, device is authenticated and the firebase service is ready.
+      {
         String datatype = "/Sensor Readings";
-        Serial.println("sending data");
+        elapsedMillis = millis();
+        //Serial.println("sending data");
         
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Room Temp", dht_tempC);
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Humidity", dht_humidity);
+        //Firebase.setString(fbdo, databasePath + datatype + "/Last Time", current_time);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/pH", ph_value);
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Water Temp", water_temp_C);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/TDS", tds_value);
         Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Pump Status", pump_status);
         Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Heater Status", heater_status);
-        Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/pH", ph_value);
-
-
-        //Firebase.setString(fbdo, databasePath + datatype + "/Last Time", current_time);
-       
-        //Firebase.setFloat(fbdo, databasePath + datatype + "/TDS", tds_value);
         //Firebase.setString(fbdo, databasePath + datatype + "/Pump Time", pump_time_string);
         //Firebase.setInt(fbdo, databasePath + datatype + "/Root Dampness", moisture_value);
 
         // Check settings
-        
         datatype = "/Settings";
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/set Water Temp", heat_set);
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/local ip", local_ip);
@@ -702,7 +645,6 @@ void sendToFirebase() {
         Firebase.RTDB.setInt(&fbdo, databasePath + datatype + "/set Pump ON", pump_on_time);
         Firebase.RTDB.setInt(&fbdo, databasePath + datatype + "/set Pump OFF", pump_off_time);
         Firebase.RTDB.setBool(&fbdo, databasePath + datatype + "/Temp Units", temp_in_C);
-        
 
         //Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Time", ph_dose_time);
         //Firebase.setFloat(fbdo, databasePath + datatype + "/pH Tolorance", ph_tolerance);
@@ -737,7 +679,6 @@ void setup(void) {
   initFirebase();
   //setupWebServer();
 
-
 /*
   // Stored Defaults
   #define EEPROM_SIZE 14
@@ -762,12 +703,12 @@ void setup(void) {
   //Initalize RTC
   //initalize_rtc();
   //setTimeVariables();
-  //configTime(0, 0, ntpServer); // for epoch time function
+  //configTime(0, 0, ntpServer);
 
   // Initilization functions
-  initDHT();
-  initWaterTemp();
-  initPH();
+  dhtInit();
+  waterTempInit();
+
   //moistureInitilization(); // change to minutes later
   //pumpInitilization();
   //heaterIntitilization();
@@ -785,19 +726,17 @@ void setup(void) {
 void loop(void) {
   getDHTReadings(); // Room temp and humidity
   getWaterTemp(); // Sets water temp C and F variables
-  getPHReading();
-  //getTDSReading(); // sets tds_value
-  //getMoistureReading();
 
   sendToFirebase();
   //setTimeVariables();
   // --- READ SENSORS
   
 
+  //getWaterTemp(); // sets tempC and tempF
+  //getTDSReading(); // sets tds_value
+  //getPH();
   
- 
-  
-
+  //moistureReading();
   //ppmBlanceCheck();
   // --- CONTROL SYSTEMS
   //checkHeater();
