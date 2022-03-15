@@ -1,34 +1,45 @@
 #include <Arduino.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-#include <RTClib.h>
-#include <millisDelay.h> // part of the SafeString Library
-#include <WiFi.h>  // for ota update
+#include <OneWire.h> // For DS18B20 Water tempurature sensor
+#include <DallasTemperature.h> // For DS18B20 Water tempurature sensor
+#include <RTClib.h> // for DS3231 Real Time Clock
+#include <millisDelay.h> // part of the SafeString Library. Used for non pausing timer
 #include <Adafruit_ADS1X15.h> // For Adafruit 4 channel ADC Breakout board SFD1015
 #include <DHT.h> // Humidity and tempurature sensor
 #include <EEPROM.h> // to access flash memory
 //#include <FirebaseESP32.h> // to connect to firebase realtime database
 #include <Firebase_ESP_Client.h>
+#include <WiFi.h>  // for ota update
+#include <SPI.h>
+#include <TFT_eSPI.h> //ILI9486 Touch screen display
+
+TFT_eSPI tft = TFT_eSPI();       // Invoke custom library
+#define TFT_GREY 0x5AEB 
 
 //--- SHORT CUTS ---------------------------------
 #define out Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
 #define outln Serial.println // Makes life easier
 
-// --- WIFI SETUP
+// ----------------------------------------------
+// ------ WIFI ------------------------------
+// ----------------------------------------------
+IPAddress local_ip; // To Capture IP address for display on screen
 //const char* ssid = "A Cat May Puree Randomly"; const char* password = "Success2021";
-const char* ssid = "Free Viruses";
-//const char* ssid = "TekSavvy";
+//const char* ssid = "Free Viruses";
+const char* ssid = "TekSavvy";
 const char* password = "cracker70";
 
+void initWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi ..");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print('.');
+    delay(1000);
+  }
+  Serial.println(WiFi.localIP());
+  Serial.println();
+}
+
 //AsyncWebServer server(80);
-
-
-// ---- FIREBASE SETUP --------------------------
-#define DEVICE_UID "2X"// Device ID
-#define API_KEY "AIzaSyAfFcN1ZnRzW-elpWK65mwCEGZgWwPPxRc"// Your Firebase Project Web API Key
-#define DATABASE_URL "https://conciergev1-default-rtdb.firebaseio.com/"// Your Firebase Realtime database URL
-#define USER_EMAIL "controller2@conciergegrowers.ca"
-#define USER_PASSWORD "Success2022"
 
 // ----------------------------------------------
 // ------ SET PINS ------------------------------
@@ -63,11 +74,13 @@ OneWire oneWire(16);// Tempurature pin - Setup a oneWire instance to communicate
 bool twelve_hour_clock = true; // Clock format
 
 // --- WATER TEMPURATURE ---
-float tempC; // tempurature in Celsius
-float tempF; // tempurature in Fahrenheit
+bool temp_in_C = true; // True = Celcius, Fales = fahrenheit
+float water_temp_C; // tempurature in Celsius
+float water_temp_F; // tempurature in Fahrenheit
 int temp_in_c = 1; // Tempurature defaults to C 0 = farenheight
 String heater_status;
 
+int water_temp_delay = 5; // Time between water temp readings
 int heat_set = 25; // Tempurature that shuts off the heater in c
 float heat_init_delay = 1; // Delay heater power on initiation in minutes
 
@@ -90,23 +103,22 @@ int ph_dose_time = 1; // Time Dosing pump runs per dose in seconds;
 float ph_tolerance = 0.2; // how much can ph go from target before adjusting
 float ph_calibration_adjustment = -1.26; // adjust this to calibrate
 
-
 float pump_init_delay = .5; // Minutes - Initial time before starting the pump on startup
 int pump_on_time = 10; // Minutes - how long the pump stays on for
 int pump_off_time = 30; // Minutes -  how long the pump stays off for
-
 
 int ppm_set_level = 1; // Desired nutrient level
 int ppm_delay_minutes = 5; //period btween readings/doses in minutes
 int ppm_dose_seconds = 1; // Time Dosing pump runs per dose
 int ppm_tolerance = 100; // nutrient level tolarance in ppm
-
+// --- FIREBASE ---
+unsigned long firebase_interval = 5; // The frequency of sensor updates to firebase, set to 10seconds
 
 
 // ==================================================
 // =========== WEB SERVER = =========================
 // ==================================================
-IPAddress local_ip;
+
 
 /*
 // *************** CALIBRATION FUNCTION ******************
@@ -117,7 +129,11 @@ uint32_t readADC_Cal(int ADC_Raw){
   return(esp_adc_cal_raw_to_voltage(ADC_Raw, &adc_chars));
 }
 */
-float convertCtoF(float c){float f = c*1.8 + 32;return f;}
+
+// =======================================================
+// ======= SPECIAL FUNCTIONS =============================
+// =======================================================
+float convertCtoF(float c){float f = c*1.8 + 32;return f;} // Convert default C into F
 
 // =======================================================
 // ======= MOISTURE SENSOR ====================
@@ -153,19 +169,46 @@ void dhtInit(){
 }
 
 void getDHTReadings(){
-  
   if (dhtDelayTimer.justFinished()){
     dht_tempC = dht.readTemperature();
     dht_tempF = dht.readTemperature(true);
     dht_humidity = dht.readHumidity();
     dhtDelayTimer.repeat();
     // --- debugging ----
-    Serial.print("reading from pin 34 :"); Serial.print(digitalRead(34));
-    Serial.print("   reading from pin 35 :"); Serial.print(digitalRead(35));
-    Serial.print("   Temperature = C:"); Serial.print(dht_tempC); Serial.print("       F: ");Serial.print(dht_tempF);
-    Serial.print("       Humidity = "); Serial.println(dht_humidity);
+    //Serial.print("   Temperature = C:"); Serial.print(dht_tempC); Serial.print("       F: ");Serial.print(dht_tempF);
+    //Serial.print("       Humidity = "); Serial.println(dht_humidity);
     // --- end debugging ---
   }
+}
+
+// =======================================================
+// ======= TEMPURATURE SENSOR DS18B20 ====================
+// =======================================================
+millisDelay waterTempDelayTimer;
+#define TEMPERATURE_PRECISION 10
+DallasTemperature waterTempSensor(&oneWire); // Pass our oneWire reference to Dallas Temperature.
+
+void waterTempInit() {
+  waterTempSensor.begin(); // initalize water temp sensor
+  waterTempDelayTimer.start(water_temp_delay*1000); 
+}
+
+void getWaterTemp() {
+  if (waterTempDelayTimer.justFinished()) {
+    waterTempSensor.requestTemperatures();    // send the command to get temperatures
+    water_temp_C = waterTempSensor.getTempCByIndex(0);  // read temperature in °C
+    water_temp_F = water_temp_C * 9 / 5 + 32; // convert °C to °F
+    if (water_temp_C == DEVICE_DISCONNECTED_C) // Something is wrong, so return an error
+      {
+        Serial.println("Houston, we have a problem");
+        water_temp_C = -1; // -1 to show error
+        water_temp_F = -1;
+      }
+    waterTempDelayTimer.repeat();
+  // debugging
+  //out("Water Temp : "); out(water_temp_C); out("C   "); out(water_temp_F); outln("F");
+  }
+  
 }
 
 // =======================================================
@@ -232,41 +275,20 @@ unsigned long getTime() {
   time(&now);
   return now;
 }
-// =======================================================
-// ======= TEMPURATURE SENSOR DS18B20 ====================
-// =======================================================
 
-millisDelay heaterTimer;
-#define TEMPERATURE_PRECISION 10
-DallasTemperature waterTempSensor(&oneWire); // Pass our oneWire reference to Dallas Temperature.
-
-void waterTempInitilization() {
-  waterTempSensor.begin(); // initalize water temp sensor
-}
-
-void getWaterTemp() {
-  waterTempSensor.requestTemperatures();    // send the command to get temperatures
-  tempC = waterTempSensor.getTempCByIndex(0);  // read temperature in °C
-  tempF = tempC * 9 / 5 + 32; // convert °C to °F
-  if (tempC == DEVICE_DISCONNECTED_C) // Something is wrong, so return an error
-    {
-      //Serial.println("Houston, we have a problem");
-      tempC = -1; 
-      tempF = tempC;
-    }
-}
 
 // =======================================================
 // ======= HEATER CONTROL ================================
 // =======================================================
-void heaterIntitilization() {
+millisDelay heaterTimer;
+void heaterInit() {
   pinMode(heat_pin, OUTPUT); digitalWrite(heat_pin, HIGH);
   heaterTimer.start(heat_init_delay *60 * 1000); // start heater initilization delay
 }
 
 void checkHeater() {
   if (heaterTimer.remaining()==0) {// if delay is done, start heater if needed
-    if (tempC < heat_set) digitalWrite(heat_pin, LOW);
+    if (water_temp_C < heat_set) digitalWrite(heat_pin, LOW);
     else digitalWrite(heat_pin, HIGH);
   }
   if (digitalRead(heat_pin == 0)) heater_status = "OFF";
@@ -346,8 +368,8 @@ void getTDSReading() {
   float temperature = 25;
   
   // get current tempurature
-  if (tempC == -100) temperature = 25;
-  else temperature = tempC;
+  if (water_temp_C == -100) temperature = 25;
+  else temperature = water_temp_C;
   static unsigned long analogSampleTimepoint = millis();
   if(millis()-analogSampleTimepoint > 40U) {    //every 40 milliseconds,read the analog value from the ADC
     analogSampleTimepoint = millis();
@@ -534,41 +556,29 @@ void doseTest() {
 // ==================================================
 // ===========  FIREBASE ============================
 // ==================================================
+#include "addons/TokenHelper.h" // Provide the token generation process info.
+#include "addons/RTDBHelper.h"// Provide the RTDB payload printing info and other helper functions.
 
-/*
-//String device_location = "Controler 1"; // Device Location config
-FirebaseData fbdo; // Firebase Realtime Database Object
-FirebaseAuth auth; // Firebase Authentication Object
-FirebaseConfig config; // Firebase configuration Object
+#define DEVICE_UID "V2.0"// Device ID
+#define API_KEY "AIzaSyAfFcN1ZnRzW-elpWK65mwCEGZgWwPPxRc"// Your Firebase Project Web API Key
+#define DATABASE_URL "https://conciergev1-default-rtdb.firebaseio.com/"// Your Firebase Realtime database URL
+#define USER_EMAIL "controller2@conciergegrowers.ca"
+#define USER_PASSWORD "Success2022"
+
+// Define Firebase objects
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
 String uid; // to save User ID
 
 String databasePath; // Firebase database path
-//String fuid = ""; // Firebase Unique Identifier
 
 unsigned long elapsedMillis = 0; // Stores the elapsed time from device start up
 unsigned long elapsedPumpMillis = 0; 
-unsigned long update_interval = 20000; // The frequency of sensor updates to firebase, set to 10seconds
 int count = 0; // Dummy counter to test initial firebase updates
 bool isAuthenticated = false;// Store device authentication status
 
-// Write float values to the database
-void sendFloat(String path, float value){
-  if (Firebase.RTDB.setFloat(&fbdo, path.c_str(), value)){
-    Serial.print("Writing value: ");
-    Serial.print (value);
-    Serial.print(" on the following path: ");
-    Serial.println(path);
-    Serial.println("PASSED");
-    Serial.println("PATH: " + fbdo.dataPath());
-    Serial.println("TYPE: " + fbdo.dataType());
-  }
-  else {
-    Serial.println("FAILED");
-    Serial.println("REASON: " + fbdo.errorReason());
-  }
-}
-
-void firebase_init() {
+void initFirebase() {
   config.api_key = API_KEY;// configure firebase API Key
   auth.user.email = USER_EMAIL; // Assing teh user sign in credentials
   auth.user.password = USER_PASSWORD;
@@ -576,7 +586,6 @@ void firebase_init() {
   Firebase.reconnectWiFi(true);// Enable WiFi reconnection 
   fbdo.setResponseSize(4096);
 
-/*
   Serial.println("------------------------------------");
   Serial.println("Sign up new user...");
   if (Firebase.signUp(&config, &auth, USER_EMAIL, USER_PASSWORD))// Sign in to firebase Anonymously
@@ -585,15 +594,14 @@ void firebase_init() {
       isAuthenticated = true;
       //databasePath = "/" + device_location;// Set the database path where updates will be loaded for this device
       uid = auth.token.uid.c_str();
-      lcd.clear(); lcd.print("Signed into Firebase!");
+      outln("Signed into Firebase!");
     }
   else
     {
       Serial.printf("Failed, %s\n", config.signer.signupError.message.c_str());
       isAuthenticated = false;
     }
- */ 
-/*
+
   config.token_status_callback = tokenStatusCallback;// Assign the callback function for the long running token generation task, see addons/TokenHelper.h
   config.max_token_generation_retry = 5;// Assign the maximum retry of token generation
   Firebase.begin(&config, &auth);// Initialise the firebase library
@@ -614,52 +622,45 @@ void firebase_init() {
 
 void sendToFirebase() {
     //Serial.print("starting sendtoFirebase");
-    if (millis() - elapsedMillis > update_interval && Firebase.ready())// Check that 10 seconds has elapsed before, device is authenticated and the firebase service is ready.
+    if (millis() - elapsedMillis > (firebase_interval*1000) && Firebase.ready())// Check that 10 seconds has elapsed before, device is authenticated and the firebase service is ready.
       {
-        //Serial.print("made it though the if");
-        // Send sensor readings
         String datatype = "/Sensor Readings";
         elapsedMillis = millis();
         //Serial.println("sending data");
-        //sendFloat(databasePath + datatype + "/Last Reading test", epochTime);
-        //sendFloat(databasePath + datatype + "/pH test", ph_value);
         
-        Firebase.setString(fbdo, databasePath + datatype + "/Last Reading", epochTime);
-        Firebase.setString(fbdo, databasePath + datatype + "/Last Time", current_time);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/pH", ph_value);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/Water Tempurature", tempC);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/TDS", tds_value);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/Room Tempurature", dht_tempC);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/Humidity", dht_humidity);
-        Firebase.setString(fbdo, databasePath + datatype + "/Pump Status", pump_status);
-        Firebase.setString(fbdo, databasePath + datatype + "/Heater Status", heater_status);
-        Firebase.setString(fbdo, databasePath + datatype + "/Pump Time", pump_time_string);
-        Firebase.setInt(fbdo, databasePath + datatype + "/Root Dampness", moisture_value);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Room Temp", dht_tempC);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Humidity", dht_humidity);
+        //Firebase.setString(fbdo, databasePath + datatype + "/Last Time", current_time);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/pH", ph_value);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Water Temp", water_temp_C);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/TDS", tds_value);
+        Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Pump Status", pump_status);
+        Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Heater Status", heater_status);
+        //Firebase.setString(fbdo, databasePath + datatype + "/Pump Time", pump_time_string);
+        //Firebase.setInt(fbdo, databasePath + datatype + "/Root Dampness", moisture_value);
 
         // Check settings
         datatype = "/Settings";
-        //Firebase.setString(fbdo, databasePath + datatype + "/Local IP", String(local_ip));
-        float fb_ph_set_level = Firebase.getFloat(fbdo, databasePath + datatype + "/set pH");
-        Serial.print("fb_ph_set_level : "); Serial.println(fb_ph_set_level);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/set Water Temp", heat_set);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/local ip", local_ip);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/set PH", ph_set_level);
+        Firebase.RTDB.setInt(&fbdo, databasePath + datatype + "/set PPM", ppm_set_level);
+        Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Device UID", DEVICE_UID);
+        Firebase.RTDB.setInt(&fbdo, databasePath + datatype + "/set Pump ON", pump_on_time);
+        Firebase.RTDB.setInt(&fbdo, databasePath + datatype + "/set Pump OFF", pump_off_time);
+        Firebase.RTDB.setBool(&fbdo, databasePath + datatype + "/Temp Units", temp_in_C);
 
-        Firebase.setFloat(fbdo, databasePath + datatype + "/set pH", ph_set_level);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/set TDS", ppm_set_level);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/set Water Tempurature", heat_set);
-        Firebase.setInt(fbdo, databasePath + datatype + "/set Pump ON", pump_on_time);
-        Firebase.setInt(fbdo, databasePath + datatype + "/set Pump OFF", pump_off_time);
-        Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Time", ph_dose_time);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/pH Tolorance", ph_tolerance);
-        Firebase.setInt(fbdo, databasePath + datatype + "/Nutrient Dose Time", ppm_dose_seconds);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/Nutrient Tolorance", ppm_tolerance);
-        Firebase.setString(fbdo, databasePath + datatype + "/Pump Time", pump_time_string);
-        Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Delay", ph_dose_delay);
-        Firebase.setInt(fbdo, databasePath + datatype + "/Nutrient Delay", ppm_delay_minutes);
-        Firebase.setFloat(fbdo, databasePath + datatype + "/set pH", ph_set_level);
-        Firebase.setInt(fbdo, databasePath + datatype + "/Temp Units", temp_in_c);
-        Firebase.setString(fbdo, databasePath + datatype + "/User ID", uid);
-        Firebase.setString(fbdo, databasePath + datatype + "/Device UID", DEVICE_UID);
+        //Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Time", ph_dose_time);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/pH Tolorance", ph_tolerance);
+        //Firebase.setInt(fbdo, databasePath + datatype + "/Nutrient Dose Time", ppm_dose_seconds);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/Nutrient Tolorance", ppm_tolerance);
+        //Firebase.setString(fbdo, databasePath + datatype + "/Pump Time", pump_time_string);
+        //Firebase.setInt(fbdo, databasePath + datatype + "/pH Dose Delay", ph_dose_delay);
+        //Firebase.setInt(fbdo, databasePath + datatype + "/Nutrient Delay", ppm_delay_minutes);
+        //Firebase.setFloat(fbdo, databasePath + datatype + "/set pH", ph_set_level);
       }
 }
+
 /*
 void sendPumpTimetoFirebase()
   {
@@ -678,8 +679,10 @@ void sendPumpTimetoFirebase()
 void setup(void) {
   Serial.begin(115200);// start serial port 115200
   Serial.println("Starting Hydroponics Controller V2!");
+  initWiFi();
+  initFirebase();
   //setupWebServer();
-  //firebase_init();
+
 /*
   // Stored Defaults
   #define EEPROM_SIZE 14
@@ -707,9 +710,8 @@ void setup(void) {
   //configTime(0, 0, ntpServer);
 
   // Initilization functions
-  //waterTempInitilization();
-
   dhtInit();
+  waterTempInit();
 
   //moistureInitilization(); // change to minutes later
   //pumpInitilization();
@@ -726,9 +728,13 @@ void setup(void) {
 // ===========  MAIN LOOP =============================
 // ====================================================
 void loop(void) {
+  getDHTReadings(); // Room temp and humidity
+  getWaterTemp(); // Sets water temp C and F variables
+
+  sendToFirebase();
   //setTimeVariables();
   // --- READ SENSORS
-  getDHTReadings();
+  
 
   //getWaterTemp(); // sets tempC and tempF
   //getTDSReading(); // sets tds_value
