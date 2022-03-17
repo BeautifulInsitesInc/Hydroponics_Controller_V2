@@ -13,13 +13,15 @@
 #include <addons/RTDBHelper.h>//Provide the RTDB payload printing info and other helper functions.
 #include <time.h> // To get epoch time
 
-
+#include <FS.h> // for ili9488  // The SPIFFS (FLASH filing system) is used to hold touch screencalibration data
 #include <WiFi.h>  // for ota update
 #include <SPI.h>
-//#include <TFT_eSPI.h> //ILI9486 Touch screen display
+#include <TFT_eSPI.h> // Hardware-specific library
 
-//TFT_eSPI tft = TFT_eSPI();       // Invoke custom library
-//#define TFT_GREY 0x5AEB 
+TFT_eSPI tft = TFT_eSPI();       // Invoke custom library
+
+#define TFT_GREY 0x5AEB // New colour
+
 
 //--- SHORT CUTS ---------------------------------
 //#define out Serial.print // I'm tired of typing Serial.print all the time during debuging, this makes it easier
@@ -56,6 +58,7 @@ void initWiFi() {
 Adafruit_ADS1115 ads; // Use 1115  for the 16-bit version ADC (0x48)
 
 #define ph_pin 34  // being temporarily used until new ADC comes in
+//int16_t adc0; //PH Sensor
 //int16_t adc1; //TDS sensor
 //int16_t adc2; //Moisture Sensor
 
@@ -236,13 +239,13 @@ void getWaterTemp() {
 RTC_DS3231 rtc; 
 DateTime now;
 
-
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 bool display_seconds = false;
 int year, month, day, dayofweek, minute, second, hour,twelvehour; // hour is 24 hour, twelvehour is 12 hour format
 bool ispm; // yes = PM
 String am_pm;
 String current_time;
+
 void initalize_rtc(){
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
@@ -279,7 +282,6 @@ void displayTime() { // Displays time in proper format
   if (twelve_hour_clock == true) Serial.print(am_pm);
   if (display_seconds == true) printDigits(second);
 }
-
 
 // ----get epoch time
 const char* ntpServer = "pool.ntp.org";// NTP server to request epoch time
@@ -320,7 +322,6 @@ void checkHeater() {
 // ======= PH SENSOR =====================================
 // =======================================================
 millisDelay phDelayTimer;
-int16_t adc0; //pH sensordevi
 
 void initPH() {phDelayTimer.start(ph_delay * 1000);}
 
@@ -352,8 +353,9 @@ void getPHReading() {
       for(int i=2;i<8;i++) {average_reading  += buffer_array_ph[i];}
       average_reading  = average_reading  / 6;
       calculated_voltage = ads.computeVolts(average_reading);
-      ph_value = voltage_input * calculated_voltage + ph_calibration_adjustment;
-      if (average_reading == 0) ph_value = 0; // make this an error condition
+      
+      if (analogRead(ph_pin) == 0) ph_value = 0; // Sensor is unplugged
+      else ph_value = voltage_input * calculated_voltage + ph_calibration_adjustment;
     
       // Debugging
       Serial.print("average_reading = "); Serial.print(average_reading );  Serial.print("      calculated_voltage = "); Serial.print(calculated_voltage); Serial.print("     ph_value = "); Serial.print(ph_value);
@@ -372,8 +374,8 @@ void getPHReading() {
         }
   */
       
-      Serial.print("   ADC Reading : "); Serial.print(adc0); 
-      Serial.print("   ADC voltage : "); Serial.println(adc0);
+      //Serial.print("   ADC Reading : "); Serial.print(adc0); 
+      //Serial.print("   ADC voltage : "); Serial.println(adc0);
   }
 }
 
@@ -682,7 +684,7 @@ void sendToFirebase() {
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Water Temp", water_temp_C);
         Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Pump Status", pump_status);
         Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/Heater Status", heater_status);
-        Firebase.RTDB.setString(&fbdo, databasePath + datatype + "/pH", ph_value);
+        Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/pH", ph_value);
 
 
         //Firebase.setString(fbdo, databasePath + datatype + "/Last Time", current_time);
@@ -733,6 +735,18 @@ void sendPumpTimetoFirebase()
 void setup(void) {
   Serial.begin(115200);// start serial port 115200
   Serial.println("Starting Hydroponics Controller V2!");
+  
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor(0, 0, 2);
+  // Set the font colour to be white with a black background, set text size multiplier to 1
+  tft.setTextColor(TFT_WHITE,TFT_BLACK);  tft.setTextSize(1);
+  // We can now plot text on screen using the "print" class
+  tft.println("Hello World! This is my screen");
+  tft.setTextSize(4);
+  tft.println("This is bigger");
+
   initWiFi();
   initFirebase();
   //setupWebServer();
