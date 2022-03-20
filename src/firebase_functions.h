@@ -1,11 +1,8 @@
 // ==================================================
 // ===========  FIREBASE ============================
 // ==================================================
-#define DEVICE_UID "version_2"// Device ID
-#define API_KEY "AIzaSyAfFcN1ZnRzW-elpWK65mwCEGZgWwPPxRc"// Your Firebase Project Web API Key
-#define DATABASE_URL "https://conciergev1-default-rtdb.firebaseio.com/"// Your Firebase Realtime database URL
-#define USER_EMAIL "controller2@conciergegrowers.ca"
-#define USER_PASSWORD "Success2022"
+#include "keys/keys_firebase.h"
+
 millisDelay firebaseDelayTimer;
 
 // Define Firebase objects

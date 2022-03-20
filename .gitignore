@@ -4,5 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 .gitignore
-wifikeys.h
+keys_wifi.h
+keys_firebase.h
 test/*
+keys/*

@@ -17,6 +17,10 @@
 #include <SPI.h>
 #include <TFT_eSPI.h> // Hardware-specific library
 
+#include <TJpg_Decoder.h>
+	
+
+
 // ----------------------------------------------
 // ------ SET PINS ------------------------------
 // ----------------------------------------------
@@ -50,6 +54,7 @@ OneWire oneWire(16);// Tempurature pin - Setup a oneWire instance to communicate
 
 // --- Time ---
 bool twelve_hour_clock = true; // Clock format
+bool display_seconds = true;
 
 // --- WATER TEMPURATURE ---
 bool temp_in_C = true; // True = Celcius, Fales = fahrenheit
