@@ -30,7 +30,7 @@ void initFirebase() {
 
   Serial.println("------------------------------------");
   Serial.println("Sign up new user...");
-/*
+
   if (Firebase.signUp(&config, &auth, USER_EMAIL, USER_PASSWORD))// Add user if it doest exist
     {
       Serial.println("Success");
@@ -43,7 +43,7 @@ void initFirebase() {
       Serial.printf("Failed, %s\n", config.signer.signupError.message.c_str());
       //isAuthenticated = false;
     }
-    */
+    
   config.token_status_callback = tokenStatusCallback;// Assign the callback function for the long running token generation task, see addons/TokenHelper.h
   config.max_token_generation_retry = 5;// Assign the maximum retry of token generation
   Firebase.begin(&config, &auth);// Initialise the firebase library
@@ -59,10 +59,12 @@ void initFirebase() {
   Serial.println(uid);
   databasePath = "/UsersData/" + uid;
   Serial.print("databasePath : "); Serial.println(databasePath);
-
+  tft.setCursor(0, 40); 
+  tft.print("UID: "); tft.setTextSize(2); tft.println(uid); tft.setTextSize(3);
   firebaseDelayTimer.start(firebase_delay*1000);
 }
 
+int data_count = 0; // counter for lcd screen
 void sendToFirebase() {
     //Serial.print("starting sendtoFirebase");
     //if (millis() - elapsedMillis > (firebase_interval*1000) && Firebase.ready())// Check that 10 seconds has elapsed before, device is authenticated and the firebase service is ready.
@@ -71,7 +73,10 @@ void sendToFirebase() {
         firebaseDelayTimer.repeat();
         String datatype = "/Sensor Readings";
         Serial.println("sending data");
-        
+        tft.setCursor(0, 60); tft.setTextSize(2);
+        tft.print("SENDING DATA: "); 
+        tft.println(data_count);
+        data_count = data_count +1;
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Room Temp", dht_tempC);
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Humidity", dht_humidity);
         Firebase.RTDB.setFloat(&fbdo, databasePath + datatype + "/Water Temp", water_temp_C);

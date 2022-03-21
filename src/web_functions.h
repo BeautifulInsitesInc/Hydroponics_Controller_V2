@@ -80,11 +80,10 @@ void initWiFi() {
     tft.print('.');
     delay(1000);
   }
-  tft.fillScreen(TFT_BLACK); tft.setTextColor(TFT_WHITE,TFT_BLACK);
-  tft.setCursor(50, 60); tft.print("SSID: "); tft.println(ssid);
-  tft.setCursor(50, 120); tft.print("IP: "); Serial.println(WiFi.localIP());
-  tft.println(WiFi.localIP());
-  Serial.println();
+  tft.fillScreen(TFT_BLACK); tft.setTextColor(TFT_WHITE,TFT_BLACK); tft.setTextSize(2);
+  tft.setCursor(0, 0); tft.print("SSID: "); tft.println(ssid);
+  tft.setCursor(0, 20); tft.print("IP: "); tft.println(WiFi.localIP());
+  Serial.println(WiFi.localIP());Serial.println();
 
   // Set GPIOs as outputs
   for (int i =0; i<NUM_OUTPUTS; i++){

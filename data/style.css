@@ -4,12 +4,20 @@ html {
 }
 h1 {
     font-size: 1.8rem; 
-    color: white;
+    color: #333333;
 }
 .topnav { 
     overflow: hidden; 
-    background-color: #0A1128;
+    background-color: #ffffff;
+    display:;
 }
+.logo {
+    max-width: 80%;
+    height: auto; 
+    overflow: hidden;
+    margin:-10% 0;
+}
+
 body {  
     margin: 0;
 }

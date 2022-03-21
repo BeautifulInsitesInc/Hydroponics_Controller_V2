@@ -35,7 +35,12 @@ void getPHReading() {
       //if (ads.readADC_SingleEnded(0) == 0) ph_value = 0; // Sensor is unplugged
       //else ph_value = voltage_input * calculated_voltage + ph_calibration_adjustment;
       ph_value = voltage_input * calculated_voltage + ph_calibration_adjustment;
-    
+
+      // Display on LCD
+      tft.setCursor(0,190); tft.setTextSize(3);
+      tft.print(ph_value); 
+      tft.setCursor(100,190); tft.print("PH");
+
       // Debugging
       //Serial.print("average_reading = "); Serial.print(average_reading );  Serial.print("      calculated_voltage = "); Serial.print(calculated_voltage); Serial.print("     ph_value = "); Serial.print(ph_value);
       //Serial.print("current reading "); Serial.println(ads.readADC_SingleEnded(0)); 

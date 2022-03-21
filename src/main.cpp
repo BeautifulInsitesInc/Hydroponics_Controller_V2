@@ -2,79 +2,71 @@
 
 // ===== INCLUDE FILES===================
 #include "main.h"
+#include "lcd_functions.h"
 #include "sensor_temp.h"
 #include "rtc_functions.h"
 #include "sensor_ph.h"
 #include "sensor_tds.h"
+#include "sensor_moisture.h"
 #include "relay_functions.h"
 #include "dosing_functions.h"
 #include "eeprom_functions.h"
 #include "spiff_functions.h"
-#include "lcd_functions.h"
+
 #include "web_functions.h"
 #include "firebase_functions.h"
+
 // ===========  MAIN SETUP ==========================
 void setup(void) {
   Serial.begin(115200);// start serial port 115200
   Serial.println("Starting Hydroponics Controller V2!");
 
-
-  
-  spiffInit();
-  spiffListFiles();
+  spiffInit(); // Prepare SPIFF for file access
+  spiffListFiles(); // List the files available
     
-  lcdInit();
-  lcdSplashScreen();
-  //lcdTest();
-   initWiFi();
-  //checkADS();
+  lcdInit(); // Prepare LCD
+  lcdSplashScreen(); // Show the intro splash screen
+  initWiFi(); // Connect to wifi and start OTA webserver
+  initFirebase();// Connect to firebase
+  initalize_rtc();// Initialize the clock
+  setTimeVariables(); // Initally set time variables
 
- 
-  //initFirebase();
-  
-  //setupWebServer();
-
-//loadEepromValues();
-
-  // Check to see if ADS initalized
-  //if (!ads.begin()) {Serial.println("Failed to initialize ADS."); while (1);}
-  
-  //Initalize RTC
-  initalize_rtc();
-  setTimeVariables();
-  //lcdSplashScreen();
-
-  //configTime(0, 0, ntpServer); // for epoch time function
-
-  // Initilization functions
+  // --- Initialize sensors
   initDHT();
   initWaterTemp();
   initPH();
-  //moistureInitilization(); // change to minutes later
+
+  moistureInitilization();
+
+  //checkADS();
+  //loadEepromValues();
+  //if (!ads.begin()) {Serial.println("Failed to initialize ADS."); while (1);}
+   //configTime(0, 0, ntpServer); // for epoch time function
+   // change to minutes later
   //pumpInitilization();
   //heaterIntitilization();
   //phDosingInitilization();
   //ppmDosingInitilization();
 
   //doseTest(); //used to test ph dosing motors
-  //testFileUpload();
-  //initialize blink delay
 }
 
 // ===========  MAIN LOOP =============================
 void loop(void) {
-  //if (showsplash) {lcdSplashScreen(); showsplash = false;} //show splash screen on initilzation
   ws.cleanupClients(); // webserver
+  setTimeVariables(); // update time variables
+  displayTime(); //display time on screen
+
   getDHTReadings(); // Room temp and humidity
   getWaterTemp(); // Sets water temp C and F variables
-  getPHReading();
-  //getTDSReading(); // sets tds_value
-  //getMoistureReading();
+  getPHReading(); // Set pH value
+  getTDSReading(); // sets tds_value
+  getMoistureReading();
 
-  //sendToFirebase();
+  sendToFirebase(); // Send sensor readings and settings to firebase
 
-  //setTimeVariables();
-  //displayTime();
+  
+  
 
   //ppmBlanceCheck();
   // --- CONTROL SYSTEMS

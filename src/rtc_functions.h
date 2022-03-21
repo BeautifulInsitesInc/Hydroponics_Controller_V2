@@ -30,9 +30,14 @@ void setTimeVariables() {
 }
 
 void printDigits(int digit) {// To alwasy display time in 2 digits
-  Serial.print(":");
-  if(digit < 10) Serial.print('0');
-  Serial.print(digit);
+  //Serial.print(":");
+  tft.print(":");
+  if(digit < 10) {
+    //Serial.print('0');
+    tft.print('0');
+  }
+  //Serial.print(digit);
+  tft.print(digit);
 }
 
 void displayTime() { // Displays time in proper format
@@ -41,7 +46,9 @@ void displayTime() { // Displays time in proper format
     if (ispm == true) am_pm = " PM";
     else am_pm = " AM";
   }
-  Serial.print(hour);
+  //Serial.print(hour);
+  tft.setCursor(380,0); tft.setTextSize(2);
+  tft.print(hour);
   printDigits(minute);
   if (display_seconds == true) printDigits(second);
   if (twelve_hour_clock == true) Serial.print(am_pm);

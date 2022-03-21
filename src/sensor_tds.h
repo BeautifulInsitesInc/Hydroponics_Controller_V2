@@ -54,6 +54,12 @@ void getTDSReading() {
     tds_value=(133.42*compensationVolatge*compensationVolatge*compensationVolatge - 255.86*compensationVolatge*compensationVolatge + 857.39*compensationVolatge)*0.5; //convert voltage value to tds value
  
     Serial.print("Average Read: "); Serial.print(average_reading); Serial.print("   average Voltage: "); Serial.print(average_voltage); Serial.print("   Temp: "); Serial.print(temperature); Serial.print("   compensationVoltage: "); Serial.print(compensationVolatge);  Serial.print("   TtdsValue: "); Serial.println(tds_value, 0);
+    
+    // Display on LCD
+    tft.setCursor(0,220); tft.setTextSize(3);
+    tft.print(tds_value); 
+    tft.setCursor(100,220); tft.print("TDS");
+    
     //Serial.print("current read : "); Serial.print(ads.readADC_SingleEnded(1));
     //Serial.print("   current voltage : "); Serial.println(ads.computeVolts(ads.readADC_SingleEnded(1)));
     

@@ -55,11 +55,11 @@ void loadFile(const char *name)
 
 void lcdSplashScreen(){
   loadFile("/lexi.jpg");
-  delay(2000);
+  delay(1000);
   //loadFile("/cg.jpg");
   //delay(1000);
   loadFile("/cgl.jpg");
-  delay(5000);
+  delay(2000);
 
   //tft.fillScreen(TFT_RED);
   //uint32_t t = millis();  // Time recorded for test purposes
