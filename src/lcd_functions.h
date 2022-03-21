@@ -56,8 +56,8 @@ void loadFile(const char *name)
 void lcdSplashScreen(){
   loadFile("/lexi.jpg");
   delay(2000);
-  loadFile("/cg.jpg");
-  delay(1000);
+  //loadFile("/cg.jpg");
+  //delay(1000);
   loadFile("/cgl.jpg");
   delay(5000);
 
