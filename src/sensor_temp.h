@@ -1,25 +1,10 @@
-// =======================================================
-// ======= MOISTURE SENSOR ====================
-// =======================================================
-/*
-int moisture_value;
-millisDelay moistureDelay;
+#include <DallasTemperature.h> // For DS18B20 Water tempurature sensor
+#include <DHT.h> // Humidity and tempurature sensor
 
-void moistureInitilization() {moistureDelay.start(moisture_delay*1000);}
 
-void moistureReading(){
-  if (moistureDelay.justFinished()){
-    int16_t reading = ads.readADC_SingleEnded(2);
-    moisture_value = map(reading, 9500, 0, 100, 0);
-    moistureDelay.repeat();
-    //Serial.print("reading : "); Serial.print(reading);
-    //Serial.print("     moisture_value = "); Serial.print(moisture_value); Serial.println("%");
-  }
-}
-*/
-// =======================================================
+float convertCtoF(float c){float f = c*1.8 + 32;return f;} // Convert default C into F
+
 // ========== DHT Sensor ==============================
-// =======================================================
 #define DHTTYPE DHT11   // DHT 11
 //#define dhtReadingDelay 1
 DHT dht(dht_pin, DHTTYPE); // Currently pin 17
@@ -50,9 +35,7 @@ void getDHTReadings(){
   }
 }
 
-// =======================================================
 // ======= TEMPURATURE SENSOR DS18B20 ====================
-// =======================================================
 millisDelay waterTempDelayTimer;
 #define TEMPERATURE_PRECISION 10
 DallasTemperature waterTempSensor(&oneWire); // Pass our oneWire reference to Dallas Temperature.
@@ -78,3 +61,21 @@ void getWaterTemp() {
   //Serial.print("Water Temp : "); Serial.print(water_temp_C); Serial.print("C   "); Serial.println(water_temp_F); Serial.print("F");
   }
 }
+
+// ======= MOISTURE SENSOR ====================
+/*
+int moisture_value;
+millisDelay moistureDelay;
+
+void moistureInitilization() {moistureDelay.start(moisture_delay*1000);}
+
+void moistureReading(){
+  if (moistureDelay.justFinished()){
+    int16_t reading = ads.readADC_SingleEnded(2);
+    moisture_value = map(reading, 9500, 0, 100, 0);
+    moistureDelay.repeat();
+    //Serial.print("reading : "); Serial.print(reading);
+    //Serial.print("     moisture_value = "); Serial.print(moisture_value); Serial.println("%");
+  }
+}
+*/

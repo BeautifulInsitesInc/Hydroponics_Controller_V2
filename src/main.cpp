@@ -1,45 +1,36 @@
 #include <Arduino.h>
+
+// ===== INCLUDE FILES===================
 #include "main.h"
-
-#include "keys/keys_wifi.h" //coconst char* ssid = "wifi ssid"; const char* password = "your password"
-#include "web_functions.h"
-#include "spiff_functions.h"
-
-// ======= SPECIAL FUNCTIONS =============================
-float convertCtoF(float c){float f = c*1.8 + 32;return f;} // Convert default C into F
-
 #include "sensor_temp.h"
 #include "rtc_functions.h"
 #include "sensor_ph.h"
 #include "sensor_tds.h"
 #include "relay_functions.h"
 #include "dosing_functions.h"
-#include "firebase_functions.h"
 #include "eeprom_functions.h"
+#include "spiff_functions.h"
 #include "lcd_functions.h"
-
-
-
-// ==================================================
+#include "web_functions.h"
+#include "firebase_functions.h"
 // ===========  MAIN SETUP ==========================
-// ==================================================
 void setup(void) {
   Serial.begin(115200);// start serial port 115200
   Serial.println("Starting Hydroponics Controller V2!");
+
+
   
   spiffInit();
   spiffListFiles();
     
   lcdInit();
-  lcdTest();
-  
-  
-
+  lcdSplashScreen();
+  //lcdTest();
+   initWiFi();
   //checkADS();
 
-  //initWiFi();
+ 
   //initFirebase();
-
   
   //setupWebServer();
 
@@ -51,6 +42,8 @@ void setup(void) {
   //Initalize RTC
   initalize_rtc();
   setTimeVariables();
+  //lcdSplashScreen();
+
   //configTime(0, 0, ntpServer); // for epoch time function
 
   // Initilization functions
@@ -68,10 +61,10 @@ void setup(void) {
   //initialize blink delay
 }
 
-// ====================================================
 // ===========  MAIN LOOP =============================
-// ====================================================
 void loop(void) {
+  //if (showsplash) {lcdSplashScreen(); showsplash = false;} //show splash screen on initilzation
+  ws.cleanupClients(); // webserver
   getDHTReadings(); // Room temp and humidity
   getWaterTemp(); // Sets water temp C and F variables
   getPHReading();
@@ -82,8 +75,6 @@ void loop(void) {
 
   //setTimeVariables();
   //displayTime();
-  delay(5000);
-  
 
   //ppmBlanceCheck();
   // --- CONTROL SYSTEMS

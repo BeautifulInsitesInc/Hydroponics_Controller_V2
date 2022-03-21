@@ -1,6 +1,7 @@
-// ==================================================
-// ===========  FIREBASE ============================
-// ==================================================
+#include <Firebase_ESP_Client.h>
+#include <addons/TokenHelper.h>//Provide the token generation process info.
+#include <addons/RTDBHelper.h>//Provide the RTDB payload printing info and other helper functions.
+
 #include "keys/keys_firebase.h"
 
 millisDelay firebaseDelayTimer;

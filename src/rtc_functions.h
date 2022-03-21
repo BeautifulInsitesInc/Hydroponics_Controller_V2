@@ -1,3 +1,6 @@
+#include <RTClib.h> // for DS3231 Real Time Clock
+
+
 RTC_DS3231 rtc; 
 DateTime now;
 

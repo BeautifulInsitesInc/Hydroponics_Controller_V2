@@ -1,35 +1,15 @@
-
-#include <OneWire.h> // For DS18B20 Water tempurature sensor
-#include <DallasTemperature.h> // For DS18B20 Water tempurature sensor
-#include <RTClib.h> // for DS3231 Real Time Clock
 #include <millisDelay.h> // part of the SafeString Library. Used for non pausing timer
 #include <Wire.h> // for 12c comunication
 #include <Adafruit_ADS1X15.h> // For Adafruit 4 channel ADC Breakout board SFD1015
-#include <DHT.h> // Humidity and tempurature sensor
-#include <EEPROM.h> // to access flash memory
-#include <Firebase_ESP_Client.h>
-#include <addons/TokenHelper.h>//Provide the token generation process info.
-#include <addons/RTDBHelper.h>//Provide the RTDB payload printing info and other helper functions.
+#include <OneWire.h> // For DS18B20 Water tempurature sensor
 #include <time.h> // To get epoch time
-
-#include <FS.h> // for ili9488  // The SPIFFS (FLASH filing system) is used to hold touch screencalibration data
-#include <WiFi.h>  // for ota update
-#include <SPI.h>
-#include <TFT_eSPI.h> // Hardware-specific library
-
-#include <TJpg_Decoder.h>
 	
-
-
-// ----------------------------------------------
-// ------ SET PINS ------------------------------
-// ----------------------------------------------
+// =============== SET PINS =============================
 // Pin 21 - SDA - RTC and LCD screen
 // Pin 22 - SCL - RTC and LCD screen
 
 // ADC Board
 Adafruit_ADS1115 ads; // Use 1115  for the 16-bit version ADC (0x48)
-
 #define ph_pin 34  // being temporarily used until new ADC comes in
 int16_t adc0; //PH Sensor
 int16_t adc1; //TDS sensor
@@ -42,15 +22,12 @@ OneWire oneWire(16);// Tempurature pin - Setup a oneWire instance to communicate
 //const int ph_pin = 35; // Will probalby only work as input
 #define pump_pin 32 // pump relay
 #define heat_pin 33 // heater relay
-
 #define ph_up_pin 25 //pH up dosing pump
 #define ph_down_pin 26 // pH down dosing pump
 #define ppm_a_pin 19 // nutrient part A dosing pump
 #define ppm_b_pin 18 // nutrient part B dosing pump
 
-// -----------------------------------------------
-// ----- DEFAULT SETTINGS & GLOBAL VARIABLES -----
-// -----------------------------------------------
+// ======== GLOBAL VARIABLES ===================
 
 // --- Time ---
 bool twelve_hour_clock = true; // Clock format
