@@ -2,7 +2,6 @@
 // ======= PPM OCEAN TDS METER SENSOR ====================
 // =======================================================
 
-int tds_value = 0;
 const int sample_count = 30;    // sum of sample point
 int analogBuffer[sample_count]; // store the analog value in the array, read from ADC
 int analogBufferTemp[sample_count];
@@ -28,6 +27,7 @@ return bTemp;
 }
 
 void getTDSReading() {
+
   float average_voltage = 0;
   unsigned long int average_reading;
   float temperature = 25;
@@ -38,8 +38,8 @@ void getTDSReading() {
   static unsigned long analogSampleTimepoint = millis();
   if(millis()-analogSampleTimepoint > 40U) {    //every 40 milliseconds,read the analog value from the ADC
     analogSampleTimepoint = millis();
-    //analogBuffer[analogBufferIndex] = ads.readADC_SingleEnded(1);    //read the analog value and store into the buffer
-    analogBuffer[analogBufferIndex] = 100;    //read the analog value and store into the buffer
+    analogBuffer[analogBufferIndex] = ads.readADC_SingleEnded(1);    //read the analog value and store into the buffer
+    //analogBuffer[analogBufferIndex] = 100;    //read the analog value and store into the buffer
     analogBufferIndex++;
     if(analogBufferIndex == sample_count) analogBufferIndex = 0;
   }   
@@ -52,16 +52,44 @@ void getTDSReading() {
     float compensationCoefficient=1.0+0.02*(temperature-25.0);    //temperature compensation formula: fFinalResult(25^C) = fFinalResult(current)/(1.0+0.02*(fTP-25.0));
     float compensationVolatge=average_voltage/compensationCoefficient;  //temperature compensation
     tds_value=(133.42*compensationVolatge*compensationVolatge*compensationVolatge - 255.86*compensationVolatge*compensationVolatge + 857.39*compensationVolatge)*0.5; //convert voltage value to tds value
- 
-    Serial.print("Average Read: "); Serial.print(average_reading); Serial.print("   average Voltage: "); Serial.print(average_voltage); Serial.print("   Temp: "); Serial.print(temperature); Serial.print("   compensationVoltage: "); Serial.print(compensationVolatge);  Serial.print("   TtdsValue: "); Serial.println(tds_value, 0);
     
+    
+    int current_tds_value = (133.42*compensationVolatge*compensationVolatge*compensationVolatge - 255.86*compensationVolatge*compensationVolatge + 857.39*compensationVolatge)*0.5;
+    Serial.print("Ave: "); Serial.print(average_reading); Serial.print(" Ave Volt: "); Serial.print(average_voltage); Serial.print(" Temp: "); Serial.print(temperature); Serial.print(" comp Volt: "); Serial.print(compensationVolatge);  Serial.print("  TDS Value: "); Serial.println(tds_value, 0);
+
     // Display on LCD
     tft.setCursor(0,220); tft.setTextSize(3);
     tft.print(tds_value); 
-    tft.setCursor(100,220); tft.print("TDS");
+    tft.setCursor(sensor_description_position,220); tft.print("TDS");
     
-    //Serial.print("current read : "); Serial.print(ads.readADC_SingleEnded(1));
-    //Serial.print("   current voltage : "); Serial.println(ads.computeVolts(ads.readADC_SingleEnded(1)));
     
   }
+}
+
+void getTDSCurrentReading(){
+  float temperature = 25;
+  float voltage = 0;
+  unsigned long int reading;
+  float compensationCoefficient;
+  float compensationVolatge;
+
+  if (water_temp_C == 0) temperature = 25;
+  else temperature = water_temp_C;
+
+  reading = ads.readADC_SingleEnded(1);
+  voltage = ads.computeVolts(reading);
+  compensationCoefficient=1.0+0.02*(temperature-25.0);    //temperature compensation formula: fFinalResult(25^C) = fFinalResult(current)/(1.0+0.02*(fTP-25.0));
+  compensationVolatge=voltage/compensationCoefficient;  //temperature compensation
+
+  tds_current_value=(133.42*compensationVolatge*compensationVolatge*compensationVolatge - 255.86*compensationVolatge*compensationVolatge + 857.39*compensationVolatge)*0.5; //convert voltage value to tds value
+
+  // Debugging
+  //Serial.print("Read : "); Serial.print(ads.readADC_SingleEnded(1)); Serial.print("   Voltage : "); Serial.print(ads.computeVolts(ads.readADC_SingleEnded(1))); Serial.print("  TDS:"); Serial.print(tds_current_value); Serial.print("    Comp voltage : "); Serial.println(compensationVolatge); 
+
+  // Display on LCD
+  tft.setCursor(0,220); tft.setTextSize(3); tft.print("    ");
+  tft.setCursor(0,220); tft.print(tds_current_value); 
+  tft.setCursor(sensor_description_position,220); tft.print("TDS");
+    
+
 }

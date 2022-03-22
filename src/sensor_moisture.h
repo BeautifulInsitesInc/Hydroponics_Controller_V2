@@ -12,9 +12,9 @@ void getMoistureReading(){
         */
         // Display on LCD
         tft.setCursor(0,250); tft.setTextSize(3);
-        tft.print(moisture_value); 
-        tft.setCursor(100,250); tft.print("SOIL-1");
-        tft.setCursor(100,280); tft.print("SOIL-2");
+        tft.print(moisture_value,0); 
+        tft.setCursor(sensor_description_position,250); tft.print("SOIL-1");
+        tft.setCursor(sensor_description_position,280); tft.print("SOIL-2");
 
         // Debugging
         //Serial.print("reading : "); Serial.print(reading);

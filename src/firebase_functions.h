@@ -31,6 +31,7 @@ void initFirebase() {
   Serial.println("------------------------------------");
   Serial.println("Sign up new user...");
 
+/*
   if (Firebase.signUp(&config, &auth, USER_EMAIL, USER_PASSWORD))// Add user if it doest exist
     {
       Serial.println("Success");
@@ -43,7 +44,7 @@ void initFirebase() {
       Serial.printf("Failed, %s\n", config.signer.signupError.message.c_str());
       //isAuthenticated = false;
     }
-    
+  */
   config.token_status_callback = tokenStatusCallback;// Assign the callback function for the long running token generation task, see addons/TokenHelper.h
   config.max_token_generation_retry = 5;// Assign the maximum retry of token generation
   Firebase.begin(&config, &auth);// Initialise the firebase library
